@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from datetime import datetime
 import urllib
 import json
 
@@ -21,30 +22,24 @@ with open('jenkins.conf') as conf:
 
 jenkins = json_conf["servers"]
 jobs_i_give_a_shit_about = json_conf["jobs"]
-
 jobs = []
-for num in jenkins:
-    jobs += read(jenkins[num] + "/api/json")["jobs"]
+for job, server in jobs_i_give_a_shit_about.iteritems():
+    jobs += [read(jenkins[server] + "/job/" + job + "/api/json")]
 
-jobs_found = []
 
 for job in jobs:
-    if job['name'] in jobs_i_give_a_shit_about:
-        jobs_found.append(job)
-
-for job in jobs_found:
-    jenkins_server = jobs_i_give_a_shit_about[job["name"]]
-
     status = job_status(job["color"])
-    if status["color"] == "BROKEN":
-        job_info = read(jenkins[jenkins_server] + "/job/" + job["name"] + "/lastUnsuccessfulBuild/api/json")
-    else:
-        job_info = read(jenkins[jenkins_server] + "/job/" + job["name"] + "/lastSuccessfulBuild/api/json")
-    jobString = job["name"] + "\t" + status["color"]
+    if job["lastFailedBuild"]:
+        broken_job_info = read(jenkins[jobs_i_give_a_shit_about[job["name"]]] + "/job/" + job["name"] + "/lastFailedBuild/api/json")
+    if job["lastSuccessfulBuild"]:
+        successful_job_info = read(jenkins[jobs_i_give_a_shit_about[job["name"]]] + "/job/" + job["name"] + "/lastSuccessfulBuild/api/json")
+    jobString = job["name"] + "\t" + str(job["lastBuild"]["number"]) + "\t" + status["color"]
     if status["build"]:
         jobString += "\t" + "BUILDING"
+    if status["color"] == "BROKEN":
+        jobString += "\tLast Success: " + datetime.fromtimestamp(successful_job_info["timestamp"] / 1000.).strftime('%Y-%m-%d %H:%M:%S')
     print jobString
     if status["color"] == "BROKEN":
-        for item in job_info["changeSet"]["items"]:
-            print "\t" + item["id"][:9] + "\t" + item["author"]["fullName"] + "\t" + item["comment"].rstrip()
-    
+        for item in broken_job_info["changeSet"]["items"]:
+            print "\t" + item["id"][:9] + "\t" + item["author"]["fullName"] + "\t" + item["comment"].splitlines()[0]
+
